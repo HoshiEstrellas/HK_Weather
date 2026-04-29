@@ -1,0 +1,22 @@
+page {
+  min-height: 100%;
+  background: #f5f7f9;
+  color: #18212b;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+button {
+  margin: 0;
+  padding: 0;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+  line-height: 1;
+}
+
+button::after {
+  border: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}

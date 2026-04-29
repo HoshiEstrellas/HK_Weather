@@ -1,0 +1,90 @@
+<view class="page">
+  <view class="header">
+    <view>
+      <text class="eyebrow">SMART LAMPPOST</text>
+      <text class="title">香港实时天气</text>
+      <text class="subtitle">来自香港天文台智慧灯柱试验性气象数据</text>
+    </view>
+    <view class="header-actions">
+      <button class="sync-button" bindtap="syncNow" loading="{{syncing}}">
+        {{syncing ? '同步中' : '同步'}}
+      </button>
+      <button class="history-button" bindtap="openHistory">历史</button>
+    </view>
+  </view>
+
+  <view class="summary" wx:if="{{summary}}">
+    <view class="metric main">
+      <text class="metric-value">{{summary.averageTemperatureText}}</text>
+      <text class="metric-label">本次平均温度</text>
+    </view>
+    <view class="metric">
+      <text class="metric-value">{{summary.dailyHighestAverageTemperatureText}}</text>
+      <text class="metric-label">今日最高平均温度</text>
+    </view>
+    <view class="metric">
+      <text class="metric-value">{{summary.dailyLowestAverageTemperatureText}}</text>
+      <text class="metric-label">今日最低平均温度</text>
+    </view>
+    <view class="metric">
+      <text class="metric-value">{{summary.averageHumidityText}}</text>
+      <text class="metric-label">本次平均湿度</text>
+    </view>
+    <view class="metric">
+      <text class="metric-value">{{summary.averageWindSpeedText}}</text>
+      <text class="metric-label">本次平均风速</text>
+    </view>
+  </view>
+
+  <view class="meta" wx:if="{{summary}}">
+    <text>灯柱 {{summary.lamppostCount}}</text>
+    <text>本批观测 {{summary.latestBatchCount}}</text>
+    <text>累计观测 {{summary.observationCount}}</text>
+    <text>间隔 {{summary.fetchIntervalMinutes}} 分钟</text>
+  </view>
+
+  <view class="search">
+    <input value="{{keyword}}" bindinput="onKeywordInput" confirm-type="search" bindconfirm="onSearch" placeholder="搜索灯柱编号，如 GF3637" />
+    <button bindtap="onSearch">搜索</button>
+  </view>
+
+  <view class="freshness" wx:if="{{summary}}">
+    <text>列表只保留当前 10 分钟区间获取的数据，页面每分钟自动刷新</text>
+    <text>最新观测 {{summary.latestObservedText}}</text>
+    <text>后端获取 {{summary.lastFetchedText}}</text>
+  </view>
+
+  <view class="error" wx:if="{{error}}">{{error}}</view>
+  <view class="loading" wx:if="{{loading}}">加载中...</view>
+
+  <view class="list" wx:else>
+    <view
+      class="weather-row"
+      wx:for="{{latest}}"
+      wx:key="id"
+      bindtap="openDetail"
+      data-lp="{{item.lpNumber}}"
+      data-device="{{item.deviceId}}"
+    >
+      <view class="row-main">
+        <view>
+          <text class="lp mono">{{item.lpNumber}}</text>
+          <text class="device">设备 {{item.deviceId}}</text>
+        </view>
+        <text class="temp">{{item.temperatureText}}</text>
+      </view>
+      <view class="row-data">
+        <text>湿度 {{item.humidityText}}</text>
+        <text>风速 {{item.windSpeedText}}</text>
+        <text>风向 {{item.windDirectionText}}</text>
+      </view>
+      <view class="row-foot">
+        <text>{{item.typeName}}</text>
+        <text>获取 {{item.fetchedText}}</text>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{latest.length == 0 && !error}}">
+      当前 10 分钟区间暂无天气记录，先点击同步或等待后端定时采集。
+    </view>
+  </view>
+</view>

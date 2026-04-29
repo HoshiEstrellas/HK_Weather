@@ -1,0 +1,30 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: hk-weather-backend
+  datasource:
+    url: "${MYSQL_URL:jdbc:mysql://localhost:3306/hk_weather?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
+    username: "${MYSQL_USERNAME:root}"
+    password: "${MYSQL_PASSWORD:root}"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+  jackson:
+    time-zone: Asia/Hong_Kong
+
+weather:
+  hko:
+    base-url: "https://data.weather.gov.hk/weatherAPI/smart-lamppost/smart-lamppost.php"
+    location-url: "https://www.hko.gov.hk/common/hko_data/smart-lamppost/files/smart_lamppost_met_device_location.json"
+    type-url: "https://www.hko.gov.hk/common/hko_data/smart-lamppost/files/smart_lamppost_met_device_type.json"
+    fetch-interval-minutes: ${WEATHER_FETCH_INTERVAL_MINUTES:10}
+    request-timeout-seconds: ${WEATHER_REQUEST_TIMEOUT_SECONDS:10}
+    sync-on-start: ${WEATHER_SYNC_ON_START:true}
+    max-lampposts: ${WEATHER_MAX_LAMPPOSTS:0}
+
+logging:
+  level:
+    com.example.hkweather: INFO

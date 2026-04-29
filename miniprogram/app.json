@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/history/history",
+    "pages/detail/detail"
+  ],
+  "window": {
+    "navigationBarTitleText": "香港实时天气",
+    "navigationBarBackgroundColor": "#101820",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f7f9",
+    "backgroundTextStyle": "dark"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
