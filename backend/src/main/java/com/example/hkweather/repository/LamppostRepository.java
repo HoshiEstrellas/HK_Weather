@@ -10,7 +10,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -24,42 +23,51 @@ public class LamppostRepository {
     }
 
     public void upsertAll(List<LamppostLocation> lampposts, Map<String, DeviceType> deviceTypes) {
-        String sql = """
-                INSERT INTO lampposts (
-                    lp_number, latitude, longitude, northing, easting, lp_type, type_name, device_ids
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                    latitude = VALUES(latitude),
-                    longitude = VALUES(longitude),
-                    northing = VALUES(northing),
-                    easting = VALUES(easting),
-                    lp_type = VALUES(lp_type),
-                    type_name = VALUES(type_name),
-                    device_ids = VALUES(device_ids),
-                    updated_at = CURRENT_TIMESTAMP
-                """;
+        for (LamppostLocation item : lampposts) {
+            DeviceType type = deviceTypes.get(item.lpType());
+            String typeName = type == null ? null : type.typeName();
+            String deviceIds = type == null ? "" : type.deviceIdsText();
 
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(java.sql.PreparedStatement ps, int i) throws SQLException {
-                LamppostLocation item = lampposts.get(i);
-                DeviceType type = deviceTypes.get(item.lpType());
-                ps.setString(1, item.lpNumber());
-                ps.setBigDecimal(2, item.latitude());
-                ps.setBigDecimal(3, item.longitude());
-                ps.setBigDecimal(4, item.northing());
-                ps.setBigDecimal(5, item.easting());
-                ps.setString(6, item.lpType());
-                ps.setString(7, type == null ? null : type.typeName());
-                ps.setString(8, type == null ? "" : type.deviceIdsText());
-            }
+            int updated = jdbcTemplate.update("""
+                    UPDATE lampposts
+                    SET latitude = ?,
+                        longitude = ?,
+                        northing = ?,
+                        easting = ?,
+                        lp_type = ?,
+                        type_name = ?,
+                        device_ids = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE lp_number = ?
+                    """,
+                    item.latitude(),
+                    item.longitude(),
+                    item.northing(),
+                    item.easting(),
+                    item.lpType(),
+                    typeName,
+                    deviceIds,
+                    item.lpNumber()
+            );
 
-            @Override
-            public int getBatchSize() {
-                return lampposts.size();
+            if (updated == 0) {
+                jdbcTemplate.update("""
+                        INSERT INTO lampposts (
+                            lp_number, latitude, longitude, northing, easting, lp_type, type_name, device_ids
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        item.lpNumber(),
+                        item.latitude(),
+                        item.longitude(),
+                        item.northing(),
+                        item.easting(),
+                        item.lpType(),
+                        typeName,
+                        deviceIds
+                );
             }
-        });
+        }
     }
 
     public List<LamppostDto> findAll() {

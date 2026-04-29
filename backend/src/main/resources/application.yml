@@ -4,14 +4,8 @@ server:
 spring:
   application:
     name: hk-weather-backend
-  datasource:
-    url: "${MYSQL_URL:jdbc:mysql://localhost:3306/hk_weather?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
-    username: "${MYSQL_USERNAME:root}"
-    password: "${MYSQL_PASSWORD:root}"
-    driver-class-name: com.mysql.cj.jdbc.Driver
-  sql:
-    init:
-      mode: always
+  profiles:
+    active: ${APP_DATABASE:mysql}
   jackson:
     time-zone: Asia/Hong_Kong
 
@@ -28,3 +22,37 @@ weather:
 logging:
   level:
     com.example.hkweather: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: "${MYSQL_URL:jdbc:mysql://localhost:3306/hk_weather?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
+    username: "${MYSQL_USERNAME:root}"
+    password: "${MYSQL_PASSWORD:root}"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-mysql.sql
+
+---
+spring:
+  config:
+    activate:
+      on-profile: h2
+  datasource:
+    url: "${H2_URL:jdbc:h2:file:./data/hk_weather;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}"
+    username: "${H2_USERNAME:sa}"
+    password: "${H2_PASSWORD:}"
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: ${H2_CONSOLE_ENABLED:true}
+      path: /h2-console
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql

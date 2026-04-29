@@ -1,6 +1,6 @@
 # 香港智慧灯柱实时天气小程序
 
-本项目是一个用于实时查看香港智慧灯柱试验性气象数据的微信小程序。系统由 Java Spring Boot 后端、MySQL 数据库和微信原生小程序端组成，后端定时从香港天文台开放数据接口获取气象数据并保存到数据库，小程序端负责展示当前区间数据、历史数据和温度统计结果。
+本项目是一个用于实时查看香港智慧灯柱试验性气象数据的微信小程序。系统由 Java Spring Boot 后端、可配置的 MySQL/H2 数据库和微信原生小程序端组成，后端定时从香港天文台开放数据接口获取气象数据并保存到数据库，小程序端负责展示当前区间数据、历史数据和温度统计结果。
 
 ## 数据来源
 
@@ -27,7 +27,7 @@
 Java Spring Boot 后端
         |
         v
-MySQL 数据库
+MySQL/H2 数据库
         |
         v
 微信小程序端
@@ -46,7 +46,7 @@ miniprogram/   微信原生小程序
 
 - 获取智慧灯柱位置与设备类型
 - 按灯柱编号和设备编号获取实时气象数据
-- 将每次获取的数据写入 MySQL
+- 将每次获取的数据写入当前启用的数据库
 - 按自然 10 分钟区间提供当前数据
 - 提供历史获取数据查询
 - 计算今日最高平均温度和最低平均温度
@@ -55,7 +55,7 @@ miniprogram/   微信原生小程序
 
 - Java 17
 - Spring Boot 3
-- MySQL 8
+- MySQL 8 或 H2
 - JDBC
 
 默认 MySQL 配置：
@@ -67,6 +67,39 @@ username: root
 password: root
 ```
 
+数据库可通过配置选择：
+
+```powershell
+# 使用 MySQL，默认值
+$env:APP_DATABASE="mysql"
+
+# 使用 H2 文件型备份数据库
+$env:APP_DATABASE="h2"
+```
+
+MySQL 配置：
+
+```powershell
+$env:MYSQL_USERNAME="root"
+$env:MYSQL_PASSWORD="root"
+$env:MYSQL_URL="jdbc:mysql://localhost:3306/hk_weather?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+```
+
+H2 配置：
+
+```powershell
+$env:H2_URL="jdbc:h2:file:./data/hk_weather;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+$env:H2_USERNAME="sa"
+$env:H2_PASSWORD=""
+$env:H2_CONSOLE_ENABLED="true"
+```
+
+H2 数据默认保存到后端目录下的 `data/` 文件夹，适合作为本地备份或轻量运行方案。H2 控制台默认地址为：
+
+```text
+http://localhost:8080/h2-console
+```
+
 采集间隔配置在后端环境变量中，默认 10 分钟：
 
 ```powershell
@@ -76,6 +109,7 @@ $env:WEATHER_FETCH_INTERVAL_MINUTES="10"
 常用配置：
 
 ```powershell
+$env:APP_DATABASE="mysql"
 $env:MYSQL_USERNAME="root"
 $env:MYSQL_PASSWORD="root"
 $env:SERVER_PORT="8080"
@@ -244,16 +278,23 @@ cd C:\Users\Desktop\weather\backend
 mvn spring-boot:run
 ```
 
-后端启动时会自动执行 `backend/src/main/resources/schema.sql` 建表。也可以手动执行：
+后端会根据 `APP_DATABASE` 自动执行对应建表脚本：
+
+```text
+MySQL: backend/src/main/resources/schema-mysql.sql
+H2:    backend/src/main/resources/schema-h2.sql
+```
+
+也可以手动执行 MySQL 建表脚本：
 
 ```powershell
-mysql -u root -proot < C:\Users\Desktop\weather\backend\sql\schema.sql
+mysql -u root -proot < C:\Users\Desktop\weather\backend\src\main\resources\schema-mysql.sql
 ```
 
 ## 项目特点
 
 - 使用官方开放数据集
-- 支持 MySQL 持久化保存
+- 支持 MySQL 持久化保存，也支持 H2 文件型备份数据库
 - 支持当前区间数据和历史数据分开查看
 - 支持按照后端获取时间倒序展示
 - 支持今日最高/最低平均温度统计

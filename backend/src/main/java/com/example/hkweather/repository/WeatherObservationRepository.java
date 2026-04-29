@@ -26,29 +26,53 @@ public class WeatherObservationRepository {
     }
 
     public int upsert(WeatherObservation observation, long syncRunId) {
-        String sql = """
-                INSERT INTO weather_observations (
-                    sync_run_id, lp_number, device_id, temperature_c, humidity_percent, wind_speed, wind_direction_deg,
-                    wind_direction_height, source_observed_at, source_processed_at, source_status, version,
-                    fetched_at, raw_payload
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                    sync_run_id = VALUES(sync_run_id),
-                    temperature_c = VALUES(temperature_c),
-                    humidity_percent = VALUES(humidity_percent),
-                    wind_speed = VALUES(wind_speed),
-                    wind_direction_deg = VALUES(wind_direction_deg),
-                    wind_direction_height = VALUES(wind_direction_height),
-                    source_processed_at = VALUES(source_processed_at),
-                    source_status = VALUES(source_status),
-                    version = VALUES(version),
-                    fetched_at = VALUES(fetched_at),
-                    raw_payload = VALUES(raw_payload)
-                """;
+        int updated = jdbcTemplate.update(connection -> {
+            PreparedStatement ps = connection.prepareStatement("""
+                    UPDATE weather_observations
+                    SET sync_run_id = ?,
+                        temperature_c = ?,
+                        humidity_percent = ?,
+                        wind_speed = ?,
+                        wind_direction_deg = ?,
+                        wind_direction_height = ?,
+                        source_processed_at = ?,
+                        source_status = ?,
+                        version = ?,
+                        fetched_at = ?,
+                        raw_payload = ?
+                    WHERE lp_number = ?
+                      AND device_id = ?
+                      AND source_observed_at = ?
+                    """);
+            ps.setLong(1, syncRunId);
+            ps.setBigDecimal(2, observation.temperatureC());
+            ps.setBigDecimal(3, observation.humidityPercent());
+            ps.setBigDecimal(4, observation.windSpeed());
+            setInteger(ps, 5, observation.windDirectionDeg());
+            setInteger(ps, 6, observation.windDirectionHeight());
+            ps.setTimestamp(7, toTimestamp(observation.sourceProcessedAt()));
+            ps.setString(8, observation.sourceStatus());
+            ps.setString(9, observation.version());
+            ps.setTimestamp(10, toTimestamp(observation.fetchedAt()));
+            ps.setString(11, observation.rawPayload());
+            ps.setString(12, observation.lpNumber());
+            ps.setString(13, observation.deviceId());
+            ps.setTimestamp(14, toTimestamp(observation.sourceObservedAt()));
+            return ps;
+        });
+        if (updated > 0) {
+            return updated;
+        }
 
         return jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql);
+            PreparedStatement ps = connection.prepareStatement("""
+                    INSERT INTO weather_observations (
+                        sync_run_id, lp_number, device_id, temperature_c, humidity_percent, wind_speed, wind_direction_deg,
+                        wind_direction_height, source_observed_at, source_processed_at, source_status, version,
+                        fetched_at, raw_payload
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """);
             ps.setLong(1, syncRunId);
             ps.setString(2, observation.lpNumber());
             ps.setString(3, observation.deviceId());
@@ -67,26 +91,16 @@ public class WeatherObservationRepository {
         });
     }
 
-    public List<WeatherObservationView> findLatest(String keyword, int limit, int intervalMinutes) {
+    public List<WeatherObservationView> findLatest(String keyword, int limit, LocalDateTime startAt, LocalDateTime endAt) {
         String sql = """
-                WITH interval_window AS (
-                    SELECT
-                        FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(CURRENT_TIMESTAMP) / (:intervalSeconds)) * (:intervalSeconds)) AS start_at,
-                        TIMESTAMPADD(
-                            SECOND,
-                            :intervalSeconds,
-                            FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(CURRENT_TIMESTAMP) / (:intervalSeconds)) * (:intervalSeconds))
-                        ) AS end_at
-                )
                 SELECT
                     wo.id, wo.lp_number, wo.device_id, l.latitude, l.longitude, l.lp_type, l.type_name,
                     wo.temperature_c, wo.humidity_percent, wo.wind_speed, wo.wind_direction_deg,
                     wo.wind_direction_height, wo.source_observed_at, wo.source_processed_at, wo.fetched_at
                 FROM weather_observations wo
                 JOIN lampposts l ON l.lp_number = wo.lp_number
-                CROSS JOIN interval_window iw
-                WHERE wo.fetched_at >= iw.start_at
-                  AND wo.fetched_at < iw.end_at
+                WHERE wo.fetched_at >= :startAt
+                  AND wo.fetched_at < :endAt
                   AND (:keyword = '' OR wo.lp_number LIKE CONCAT('%', :keyword, '%'))
                 ORDER BY wo.fetched_at DESC, wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
@@ -94,7 +108,8 @@ public class WeatherObservationRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("keyword", keyword == null ? "" : keyword.trim())
                 .addValue("limit", Math.max(1, Math.min(limit, 200)))
-                .addValue("intervalSeconds", intervalSeconds(intervalMinutes));
+                .addValue("startAt", startAt)
+                .addValue("endAt", endAt);
         return namedJdbcTemplate.query(sql, params, this::mapView);
     }
 
@@ -110,19 +125,15 @@ public class WeatherObservationRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    public List<WeatherObservationView> findGlobalHistory(String keyword, int limit, int intervalMinutes) {
+    public List<WeatherObservationView> findGlobalHistory(String keyword, int limit, LocalDateTime beforeAt) {
         String sql = """
-                WITH interval_window AS (
-                    SELECT FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(CURRENT_TIMESTAMP) / (:intervalSeconds)) * (:intervalSeconds)) AS start_at
-                )
                 SELECT
                     wo.id, wo.lp_number, wo.device_id, l.latitude, l.longitude, l.lp_type, l.type_name,
                     wo.temperature_c, wo.humidity_percent, wo.wind_speed, wo.wind_direction_deg,
                     wo.wind_direction_height, wo.source_observed_at, wo.source_processed_at, wo.fetched_at
                 FROM weather_observations wo
                 JOIN lampposts l ON l.lp_number = wo.lp_number
-                CROSS JOIN interval_window iw
-                WHERE wo.fetched_at < iw.start_at
+                WHERE wo.fetched_at < :beforeAt
                   AND (:keyword = '' OR wo.lp_number LIKE CONCAT('%', :keyword, '%'))
                 ORDER BY wo.fetched_at DESC, wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
@@ -130,7 +141,7 @@ public class WeatherObservationRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("keyword", keyword == null ? "" : keyword.trim())
                 .addValue("limit", Math.max(1, Math.min(limit, 500)))
-                .addValue("intervalSeconds", intervalSeconds(intervalMinutes));
+                .addValue("beforeAt", beforeAt);
         return namedJdbcTemplate.query(sql, params, this::mapView);
     }
 
@@ -159,17 +170,8 @@ public class WeatherObservationRepository {
         return count == null ? 0 : count;
     }
 
-    public Map<String, Object> latestStats(int intervalMinutes) {
+    public Map<String, Object> latestStats(LocalDateTime startAt, LocalDateTime endAt) {
         String sql = """
-                WITH interval_window AS (
-                    SELECT
-                        FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(CURRENT_TIMESTAMP) / (:intervalSeconds)) * (:intervalSeconds)) AS start_at,
-                        TIMESTAMPADD(
-                            SECOND,
-                            :intervalSeconds,
-                            FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(CURRENT_TIMESTAMP) / (:intervalSeconds)) * (:intervalSeconds))
-                        ) AS end_at
-                )
                 SELECT
                     COUNT(*) AS latest_batch_count,
                     AVG(temperature_c) AS average_temperature_c,
@@ -178,44 +180,15 @@ public class WeatherObservationRepository {
                     MAX(source_observed_at) AS latest_observed_at,
                     MAX(fetched_at) AS last_fetched_at
                 FROM weather_observations wo
-                CROSS JOIN interval_window iw
-                WHERE wo.fetched_at >= iw.start_at
-                  AND wo.fetched_at < iw.end_at
+                WHERE wo.fetched_at >= :startAt
+                  AND wo.fetched_at < :endAt
                 """;
         return namedJdbcTemplate.queryForMap(
                 sql,
-                new MapSqlParameterSource("intervalSeconds", intervalSeconds(intervalMinutes))
+                new MapSqlParameterSource()
+                        .addValue("startAt", startAt)
+                        .addValue("endAt", endAt)
         );
-    }
-
-    public Map<String, Object> dailyAverageTemperatureExtremes(int intervalMinutes) {
-        return namedJdbcTemplate.queryForMap("""
-                WITH candidate_runs AS (
-                    SELECT id, started_at, average_temperature_c
-                    FROM sync_runs
-                    WHERE started_at >= CURRENT_DATE
-                      AND started_at < CURRENT_DATE + INTERVAL 1 DAY
-                      AND status IN ('SUCCESS', 'PARTIAL_SUCCESS')
-                      AND average_temperature_c IS NOT NULL
-                      AND MOD(MINUTE(started_at), :intervalMinutes) = 0
-                ),
-                eligible_runs AS (
-                    SELECT c.average_temperature_c
-                    FROM candidate_runs c
-                    WHERE EXISTS (
-                        SELECT 1
-                        FROM sync_runs p
-                        WHERE p.started_at >= CURRENT_DATE
-                          AND p.started_at <= TIMESTAMPADD(MINUTE, -1 * :intervalMinutes, c.started_at)
-                          AND p.status IN ('SUCCESS', 'PARTIAL_SUCCESS')
-                          AND p.average_temperature_c IS NOT NULL
-                    )
-                )
-                SELECT
-                    MAX(average_temperature_c) AS daily_highest_average_temperature_c,
-                    MIN(average_temperature_c) AS daily_lowest_average_temperature_c
-                FROM eligible_runs
-                """, new MapSqlParameterSource("intervalMinutes", intervalMinutes));
     }
 
     private WeatherObservationView mapView(ResultSet rs, int rowNum) throws SQLException {
@@ -259,7 +232,4 @@ public class WeatherObservationRepository {
         return timestamp == null ? null : timestamp.toLocalDateTime();
     }
 
-    private int intervalSeconds(int intervalMinutes) {
-        return Math.max(1, intervalMinutes) * 60;
-    }
 }

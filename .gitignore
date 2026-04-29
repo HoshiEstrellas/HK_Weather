@@ -7,3 +7,6 @@ dist/
 coverage/
 *.iml
 miniprogram/project.private.config.json
+backend/data/
+*.mv.db
+*.trace.db

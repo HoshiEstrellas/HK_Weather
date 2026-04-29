@@ -1,5 +1,6 @@
 package com.example.hkweather.config;
 
+import javax.sql.DataSource;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -11,13 +12,18 @@ import org.springframework.stereotype.Component;
 public class DatabaseMigrationRunner implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DataSource dataSource;
 
-    public DatabaseMigrationRunner(JdbcTemplate jdbcTemplate) {
+    public DatabaseMigrationRunner(JdbcTemplate jdbcTemplate, DataSource dataSource) {
         this.jdbcTemplate = jdbcTemplate;
+        this.dataSource = dataSource;
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        if (!isMySql()) {
+            return;
+        }
         addColumnIfMissing("weather_observations", "sync_run_id",
                 "ALTER TABLE weather_observations ADD COLUMN sync_run_id BIGINT NULL AFTER id");
         addIndexIfMissing("weather_observations", "idx_weather_sync_run",
@@ -53,6 +59,15 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                 """, Integer.class, tableName, indexName);
         if (count == null || count == 0) {
             jdbcTemplate.execute(sql);
+        }
+    }
+
+    private boolean isMySql() {
+        try (var connection = dataSource.getConnection()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            return productName != null && productName.toLowerCase().contains("mysql");
+        } catch (Exception ex) {
+            return false;
         }
     }
 }

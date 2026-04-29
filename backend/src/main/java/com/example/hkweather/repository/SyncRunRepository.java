@@ -89,6 +89,19 @@ public class SyncRunRepository {
         return rows.stream().findFirst();
     }
 
+    public List<SyncRunDto> findSuccessfulRunsBetween(LocalDateTime startAt, LocalDateTime endAt) {
+        return jdbcTemplate.query("""
+                SELECT id, status, started_at, finished_at, lamppost_count, fetched_count, saved_count, failed_count,
+                       average_temperature_c, average_humidity_percent, average_wind_speed, message
+                FROM sync_runs
+                WHERE started_at >= ?
+                  AND started_at < ?
+                  AND status IN ('SUCCESS', 'PARTIAL_SUCCESS')
+                  AND average_temperature_c IS NOT NULL
+                ORDER BY started_at ASC, id ASC
+                """, this::mapSyncRun, Timestamp.valueOf(startAt), Timestamp.valueOf(endAt));
+    }
+
     private SyncRunDto mapSyncRun(ResultSet rs, int rowNum) throws SQLException {
         return new SyncRunDto(
                 rs.getLong("id"),
