@@ -5,13 +5,17 @@ spring:
   application:
     name: hk-weather-backend
   datasource:
-    url: "${MYSQL_URL:jdbc:mysql://localhost:3306/hk_weather?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
-    username: "${MYSQL_USERNAME:root}"
-    password: "${MYSQL_PASSWORD:root}"
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: sa
+    password: ""
+    url: jdbc:h2:file:./data/hk_weather;MODE=MySQL;AUTO_SERVER=TRUE;
+    driver-class-name: org.h2.Driver
   sql:
     init:
-      mode: always
+      mode: never
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
   jackson:
     time-zone: Asia/Hong_Kong
 

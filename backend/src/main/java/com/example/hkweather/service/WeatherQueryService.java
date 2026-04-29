@@ -1,11 +1,11 @@
 package com.example.hkweather.service;
 
 import com.example.hkweather.config.WeatherProperties;
+import com.example.hkweather.dao.LamppostDao;
+import com.example.hkweather.dao.WeatherObservationDao;
 import com.example.hkweather.dto.LamppostDto;
 import com.example.hkweather.dto.WeatherObservationView;
 import com.example.hkweather.dto.WeatherSummaryResponse;
-import com.example.hkweather.repository.LamppostRepository;
-import com.example.hkweather.repository.WeatherObservationRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -17,28 +17,28 @@ import org.springframework.stereotype.Service;
 @Service
 public class WeatherQueryService {
 
-    private final LamppostRepository lamppostRepository;
-    private final WeatherObservationRepository observationRepository;
+    private final LamppostDao lamppostDao;
+    private final WeatherObservationDao weatherObservationDao;
     private final WeatherProperties properties;
 
     public WeatherQueryService(
-            LamppostRepository lamppostRepository,
-            WeatherObservationRepository observationRepository,
+            LamppostDao lamppostDao,
+            WeatherObservationDao weatherObservationDao,
             WeatherProperties properties
     ) {
-        this.lamppostRepository = lamppostRepository;
-        this.observationRepository = observationRepository;
+        this.lamppostDao = lamppostDao;
+        this.weatherObservationDao = weatherObservationDao;
         this.properties = properties;
     }
 
     public WeatherSummaryResponse summary() {
-        Map<String, Object> stats = observationRepository.latestStats(properties.getFetchIntervalMinutes());
-        Map<String, Object> dailyExtremes = observationRepository.dailyAverageTemperatureExtremes(
+        Map<String, Object> stats = weatherObservationDao.latestStats(properties.getFetchIntervalMinutes());
+        Map<String, Object> dailyExtremes = weatherObservationDao.dailyAverageTemperatureExtremes(
                 properties.getFetchIntervalMinutes()
         );
         return new WeatherSummaryResponse(
-                lamppostRepository.count(),
-                observationRepository.count(),
+                Math.toIntExact(lamppostDao.count()),
+                Math.toIntExact(weatherObservationDao.count()),
                 toBigDecimal(stats.get("average_temperature_c")),
                 toBigDecimal(stats.get("average_humidity_percent")),
                 toBigDecimal(stats.get("average_wind_speed")),
@@ -52,23 +52,23 @@ public class WeatherQueryService {
     }
 
     public List<WeatherObservationView> latest(String keyword, int limit) {
-        return observationRepository.findLatest(keyword, limit, properties.getFetchIntervalMinutes());
+        return weatherObservationDao.findLatest(keyword, limit, properties.getFetchIntervalMinutes());
     }
 
     public List<WeatherObservationView> globalHistory(String keyword, int limit) {
-        return observationRepository.findGlobalHistory(keyword, limit, properties.getFetchIntervalMinutes());
+        return weatherObservationDao.findGlobalHistory(keyword, limit, properties.getFetchIntervalMinutes());
     }
 
     public List<LamppostDto> lampposts() {
-        return lamppostRepository.findAll();
+        return lamppostDao.findAllViews();
     }
 
     public Optional<LamppostDto> lamppost(String lpNumber) {
-        return lamppostRepository.findByLpNumber(lpNumber);
+        return lamppostDao.findByLpNumberView(lpNumber);
     }
 
     public List<WeatherObservationView> history(String lpNumber, String deviceId, int limit) {
-        return observationRepository.findHistory(lpNumber, deviceId, limit);
+        return weatherObservationDao.findHistory(lpNumber, deviceId, limit);
     }
 
     private BigDecimal toBigDecimal(Object value) {

@@ -1,30 +1,27 @@
-package com.example.hkweather.repository;
+package com.example.hkweather.dao;
 
 import com.example.hkweather.dto.WeatherObservationView;
 import com.example.hkweather.model.WeatherObservation;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public class WeatherObservationRepository {
+public class WeatherObservationDaoImpl implements WeatherObservationDaoCustom {
 
-    private final JdbcTemplate jdbcTemplate;
-    private final NamedParameterJdbcTemplate namedJdbcTemplate;
+    @PersistenceContext
+    private EntityManager entityManager;
 
-    public WeatherObservationRepository(JdbcTemplate jdbcTemplate, NamedParameterJdbcTemplate namedJdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.namedJdbcTemplate = namedJdbcTemplate;
-    }
-
+    @Override
+    @Transactional
     public int upsert(WeatherObservation observation, long syncRunId) {
         String sql = """
                 INSERT INTO weather_observations (
@@ -46,27 +43,25 @@ public class WeatherObservationRepository {
                     fetched_at = VALUES(fetched_at),
                     raw_payload = VALUES(raw_payload)
                 """;
-
-        return jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql);
-            ps.setLong(1, syncRunId);
-            ps.setString(2, observation.lpNumber());
-            ps.setString(3, observation.deviceId());
-            ps.setBigDecimal(4, observation.temperatureC());
-            ps.setBigDecimal(5, observation.humidityPercent());
-            ps.setBigDecimal(6, observation.windSpeed());
-            setInteger(ps, 7, observation.windDirectionDeg());
-            setInteger(ps, 8, observation.windDirectionHeight());
-            ps.setTimestamp(9, toTimestamp(observation.sourceObservedAt()));
-            ps.setTimestamp(10, toTimestamp(observation.sourceProcessedAt()));
-            ps.setString(11, observation.sourceStatus());
-            ps.setString(12, observation.version());
-            ps.setTimestamp(13, toTimestamp(observation.fetchedAt()));
-            ps.setString(14, observation.rawPayload());
-            return ps;
-        });
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter(1, syncRunId);
+        query.setParameter(2, observation.lpNumber());
+        query.setParameter(3, observation.deviceId());
+        query.setParameter(4, observation.temperatureC());
+        query.setParameter(5, observation.humidityPercent());
+        query.setParameter(6, observation.windSpeed());
+        query.setParameter(7, observation.windDirectionDeg());
+        query.setParameter(8, observation.windDirectionHeight());
+        query.setParameter(9, observation.sourceObservedAt());
+        query.setParameter(10, observation.sourceProcessedAt());
+        query.setParameter(11, observation.sourceStatus());
+        query.setParameter(12, observation.version());
+        query.setParameter(13, observation.fetchedAt());
+        query.setParameter(14, observation.rawPayload());
+        return query.executeUpdate();
     }
 
+    @Override
     public List<WeatherObservationView> findLatest(String keyword, int limit, int intervalMinutes) {
         String sql = """
                 WITH interval_window AS (
@@ -91,25 +86,35 @@ public class WeatherObservationRepository {
                 ORDER BY wo.fetched_at DESC, wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("keyword", keyword == null ? "" : keyword.trim())
-                .addValue("limit", Math.max(1, Math.min(limit, 200)))
-                .addValue("intervalSeconds", intervalSeconds(intervalMinutes));
-        return namedJdbcTemplate.query(sql, params, this::mapView);
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("keyword", keyword == null ? "" : keyword.trim());
+        query.setParameter("limit", Math.max(1, Math.min(limit, 200)));
+        query.setParameter("intervalSeconds", intervalSeconds(intervalMinutes));
+        List<Object[]> rows = query.getResultList();
+        return rows.stream().map(this::mapView).toList();
     }
 
+    @Override
     public Long findLatestBatchSyncRunId() {
-        List<Long> rows = jdbcTemplate.queryForList("""
+        List<?> rows = entityManager.createNativeQuery("""
                 SELECT sync_run_id
                 FROM weather_observations
                 WHERE sync_run_id IS NOT NULL
                 GROUP BY sync_run_id
                 ORDER BY MAX(fetched_at) DESC, sync_run_id DESC
                 LIMIT 1
-                """, Long.class);
-        return rows.isEmpty() ? null : rows.get(0);
+                """).getResultList();
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Object value = rows.get(0);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(value.toString());
     }
 
+    @Override
     public List<WeatherObservationView> findGlobalHistory(String keyword, int limit, int intervalMinutes) {
         String sql = """
                 WITH interval_window AS (
@@ -127,13 +132,15 @@ public class WeatherObservationRepository {
                 ORDER BY wo.fetched_at DESC, wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("keyword", keyword == null ? "" : keyword.trim())
-                .addValue("limit", Math.max(1, Math.min(limit, 500)))
-                .addValue("intervalSeconds", intervalSeconds(intervalMinutes));
-        return namedJdbcTemplate.query(sql, params, this::mapView);
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("keyword", keyword == null ? "" : keyword.trim());
+        query.setParameter("limit", Math.max(1, Math.min(limit, 500)));
+        query.setParameter("intervalSeconds", intervalSeconds(intervalMinutes));
+        List<Object[]> rows = query.getResultList();
+        return rows.stream().map(this::mapView).toList();
     }
 
+    @Override
     public List<WeatherObservationView> findHistory(String lpNumber, String deviceId, int limit) {
         String sql = """
                 SELECT
@@ -147,18 +154,15 @@ public class WeatherObservationRepository {
                 ORDER BY wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("lpNumber", lpNumber)
-                .addValue("deviceId", deviceId == null ? "" : deviceId.trim())
-                .addValue("limit", Math.max(1, Math.min(limit, 200)));
-        return namedJdbcTemplate.query(sql, params, this::mapView);
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("lpNumber", lpNumber);
+        query.setParameter("deviceId", deviceId == null ? "" : deviceId.trim());
+        query.setParameter("limit", Math.max(1, Math.min(limit, 200)));
+        List<Object[]> rows = query.getResultList();
+        return rows.stream().map(this::mapView).toList();
     }
 
-    public int count() {
-        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM weather_observations", Integer.class);
-        return count == null ? 0 : count;
-    }
-
+    @Override
     public Map<String, Object> latestStats(int intervalMinutes) {
         String sql = """
                 WITH interval_window AS (
@@ -182,14 +186,22 @@ public class WeatherObservationRepository {
                 WHERE wo.fetched_at >= iw.start_at
                   AND wo.fetched_at < iw.end_at
                 """;
-        return namedJdbcTemplate.queryForMap(
-                sql,
-                new MapSqlParameterSource("intervalSeconds", intervalSeconds(intervalMinutes))
-        );
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("intervalSeconds", intervalSeconds(intervalMinutes));
+        Object[] row = (Object[]) query.getSingleResult();
+        Map<String, Object> result = new HashMap<>();
+        result.put("latest_batch_count", row[0]);
+        result.put("average_temperature_c", row[1]);
+        result.put("average_humidity_percent", row[2]);
+        result.put("average_wind_speed", row[3]);
+        result.put("latest_observed_at", row[4]);
+        result.put("last_fetched_at", row[5]);
+        return result;
     }
 
+    @Override
     public Map<String, Object> dailyAverageTemperatureExtremes(int intervalMinutes) {
-        return namedJdbcTemplate.queryForMap("""
+        Query query = entityManager.createNativeQuery("""
                 WITH candidate_runs AS (
                     SELECT id, started_at, average_temperature_c
                     FROM sync_runs
@@ -215,48 +227,79 @@ public class WeatherObservationRepository {
                     MAX(average_temperature_c) AS daily_highest_average_temperature_c,
                     MIN(average_temperature_c) AS daily_lowest_average_temperature_c
                 FROM eligible_runs
-                """, new MapSqlParameterSource("intervalMinutes", intervalMinutes));
+                """);
+        query.setParameter("intervalMinutes", intervalMinutes);
+        Object[] row = (Object[]) query.getSingleResult();
+        Map<String, Object> result = new HashMap<>();
+        result.put("daily_highest_average_temperature_c", row[0]);
+        result.put("daily_lowest_average_temperature_c", row[1]);
+        return result;
     }
 
-    private WeatherObservationView mapView(ResultSet rs, int rowNum) throws SQLException {
+    private WeatherObservationView mapView(Object[] row) {
         return new WeatherObservationView(
-                rs.getLong("id"),
-                rs.getString("lp_number"),
-                rs.getString("device_id"),
-                rs.getBigDecimal("latitude"),
-                rs.getBigDecimal("longitude"),
-                rs.getString("lp_type"),
-                rs.getString("type_name"),
-                rs.getBigDecimal("temperature_c"),
-                rs.getBigDecimal("humidity_percent"),
-                rs.getBigDecimal("wind_speed"),
-                getNullableInteger(rs, "wind_direction_deg"),
-                getNullableInteger(rs, "wind_direction_height"),
-                toLocalDateTime(rs.getTimestamp("source_observed_at")),
-                toLocalDateTime(rs.getTimestamp("source_processed_at")),
-                toLocalDateTime(rs.getTimestamp("fetched_at"))
+                toLong(row[0]),
+                row[1] == null ? null : row[1].toString(),
+                row[2] == null ? null : row[2].toString(),
+                toBigDecimal(row[3]),
+                toBigDecimal(row[4]),
+                row[5] == null ? null : row[5].toString(),
+                row[6] == null ? null : row[6].toString(),
+                toBigDecimal(row[7]),
+                toBigDecimal(row[8]),
+                toBigDecimal(row[9]),
+                toInteger(row[10]),
+                toInteger(row[11]),
+                toLocalDateTime(row[12]),
+                toLocalDateTime(row[13]),
+                toLocalDateTime(row[14])
         );
     }
 
-    private void setInteger(PreparedStatement ps, int index, Integer value) throws SQLException {
+    private Long toLong(Object value) {
         if (value == null) {
-            ps.setObject(index, null);
-        } else {
-            ps.setInt(index, value);
+            return null;
         }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(value.toString());
     }
 
-    private Integer getNullableInteger(ResultSet rs, String column) throws SQLException {
-        int value = rs.getInt(column);
-        return rs.wasNull() ? null : value;
+    private Integer toInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.valueOf(value.toString());
     }
 
-    private Timestamp toTimestamp(LocalDateTime value) {
-        return value == null ? null : Timestamp.valueOf(value);
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        return new BigDecimal(value.toString());
     }
 
-    private LocalDateTime toLocalDateTime(Timestamp timestamp) {
-        return timestamp == null ? null : timestamp.toLocalDateTime();
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        return LocalDateTime.parse(value.toString());
     }
 
     private int intervalSeconds(int intervalMinutes) {

@@ -1,13 +1,13 @@
 package com.example.hkweather.service;
 
 import com.example.hkweather.config.WeatherProperties;
+import com.example.hkweather.dao.LamppostDao;
+import com.example.hkweather.dao.SyncRunDao;
+import com.example.hkweather.dao.WeatherObservationDao;
 import com.example.hkweather.dto.SyncRunDto;
 import com.example.hkweather.model.DeviceType;
 import com.example.hkweather.model.LamppostLocation;
 import com.example.hkweather.model.WeatherObservation;
-import com.example.hkweather.repository.LamppostRepository;
-import com.example.hkweather.repository.SyncRunRepository;
-import com.example.hkweather.repository.WeatherObservationRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -32,23 +32,23 @@ public class WeatherSyncService {
     private static final ZoneId HONG_KONG_ZONE = ZoneId.of("Asia/Hong_Kong");
 
     private final HkoWeatherClient hkoWeatherClient;
-    private final LamppostRepository lamppostRepository;
-    private final WeatherObservationRepository observationRepository;
-    private final SyncRunRepository syncRunRepository;
+    private final LamppostDao lamppostDao;
+    private final WeatherObservationDao weatherObservationDao;
+    private final SyncRunDao syncRunDao;
     private final WeatherProperties properties;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public WeatherSyncService(
             HkoWeatherClient hkoWeatherClient,
-            LamppostRepository lamppostRepository,
-            WeatherObservationRepository observationRepository,
-            SyncRunRepository syncRunRepository,
+            LamppostDao lamppostDao,
+            WeatherObservationDao weatherObservationDao,
+            SyncRunDao syncRunDao,
             WeatherProperties properties
     ) {
         this.hkoWeatherClient = hkoWeatherClient;
-        this.lamppostRepository = lamppostRepository;
-        this.observationRepository = observationRepository;
-        this.syncRunRepository = syncRunRepository;
+        this.lamppostDao = lamppostDao;
+        this.weatherObservationDao = weatherObservationDao;
+        this.syncRunDao = syncRunDao;
         this.properties = properties;
     }
 
@@ -78,12 +78,12 @@ public class WeatherSyncService {
 
     public SyncRunDto syncNow() {
         if (!running.compareAndSet(false, true)) {
-            return syncRunRepository.findLatest()
+            return syncRunDao.findLatestDto()
                     .orElse(new SyncRunDto(null, "RUNNING", null, null, 0, 0, 0, 0,
                             null, null, null, "Sync already running"));
         }
 
-        long syncRunId = syncRunRepository.start();
+        long syncRunId = syncRunDao.start();
         int lamppostCount = 0;
         int fetchedCount = 0;
         int savedCount = 0;
@@ -103,7 +103,7 @@ public class WeatherSyncService {
                 lampposts = lampposts.subList(0, properties.getMaxLampposts());
             }
 
-            lamppostRepository.upsertAll(lampposts, deviceTypeMap);
+            lamppostDao.upsertAll(lampposts, deviceTypeMap);
             lamppostCount = lampposts.size();
 
             for (LamppostLocation lamppost : lampposts) {
@@ -122,7 +122,7 @@ public class WeatherSyncService {
                             temperatureAverage.add(weatherObservation.temperatureC());
                             humidityAverage.add(weatherObservation.humidityPercent());
                             windSpeedAverage.add(weatherObservation.windSpeed());
-                            int affectedRows = observationRepository.upsert(weatherObservation, syncRunId);
+                            int affectedRows = weatherObservationDao.upsert(weatherObservation, syncRunId);
                             if (affectedRows > 0) {
                                 savedCount++;
                             }
@@ -138,14 +138,14 @@ public class WeatherSyncService {
             if (failedCount > 0) {
                 message = "Sync completed with " + failedCount + " failed request(s)";
             }
-            syncRunRepository.finish(syncRunId, status, lamppostCount, fetchedCount, savedCount, failedCount,
+            syncRunDao.finish(syncRunId, status, lamppostCount, fetchedCount, savedCount, failedCount,
                     temperatureAverage.average(2), humidityAverage.average(2), windSpeedAverage.average(2), message);
             log.info("Weather sync finished: lampposts={}, fetched={}, saved={}, failed={}",
                     lamppostCount, fetchedCount, savedCount, failedCount);
-            return syncRunRepository.findById(syncRunId)
+            return syncRunDao.findByIdDto(syncRunId)
                     .orElseThrow(() -> new IllegalStateException("Sync run not found after finish"));
         } catch (Exception ex) {
-            syncRunRepository.finish(syncRunId, "FAILED", lamppostCount, fetchedCount, savedCount, failedCount,
+            syncRunDao.finish(syncRunId, "FAILED", lamppostCount, fetchedCount, savedCount, failedCount,
                     temperatureAverage.average(2), humidityAverage.average(2), windSpeedAverage.average(2), ex.getMessage());
             throw ex;
         } finally {
@@ -154,7 +154,7 @@ public class WeatherSyncService {
     }
 
     public Optional<SyncRunDto> latestSyncRun() {
-        return syncRunRepository.findLatest();
+        return syncRunDao.findLatestDto();
     }
 
     private boolean isIntervalBoundary(LocalDateTime now) {
