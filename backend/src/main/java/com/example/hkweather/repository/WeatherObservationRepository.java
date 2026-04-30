@@ -125,7 +125,12 @@ public class WeatherObservationRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    public List<WeatherObservationView> findGlobalHistory(String keyword, int limit, LocalDateTime beforeAt) {
+    public List<WeatherObservationView> findGlobalHistory(
+            String keyword,
+            int limit,
+            LocalDateTime startAt,
+            LocalDateTime endAt
+    ) {
         String sql = """
                 SELECT
                     wo.id, wo.lp_number, wo.device_id, l.latitude, l.longitude, l.lp_type, l.type_name,
@@ -133,7 +138,8 @@ public class WeatherObservationRepository {
                     wo.wind_direction_height, wo.source_observed_at, wo.source_processed_at, wo.fetched_at
                 FROM weather_observations wo
                 JOIN lampposts l ON l.lp_number = wo.lp_number
-                WHERE wo.fetched_at < :beforeAt
+                WHERE wo.fetched_at >= :startAt
+                  AND wo.fetched_at < :endAt
                   AND (:keyword = '' OR wo.lp_number LIKE CONCAT('%', :keyword, '%'))
                 ORDER BY wo.fetched_at DESC, wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
@@ -141,11 +147,18 @@ public class WeatherObservationRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("keyword", keyword == null ? "" : keyword.trim())
                 .addValue("limit", Math.max(1, Math.min(limit, 500)))
-                .addValue("beforeAt", beforeAt);
+                .addValue("startAt", startAt)
+                .addValue("endAt", endAt);
         return namedJdbcTemplate.query(sql, params, this::mapView);
     }
 
-    public List<WeatherObservationView> findHistory(String lpNumber, String deviceId, int limit) {
+    public List<WeatherObservationView> findHistory(
+            String lpNumber,
+            String deviceId,
+            int limit,
+            LocalDateTime startAt,
+            LocalDateTime endAt
+    ) {
         String sql = """
                 SELECT
                     wo.id, wo.lp_number, wo.device_id, l.latitude, l.longitude, l.lp_type, l.type_name,
@@ -154,14 +167,18 @@ public class WeatherObservationRepository {
                 FROM weather_observations wo
                 JOIN lampposts l ON l.lp_number = wo.lp_number
                 WHERE wo.lp_number = :lpNumber
+                  AND wo.fetched_at >= :startAt
+                  AND wo.fetched_at < :endAt
                   AND (:deviceId = '' OR wo.device_id = :deviceId)
-                ORDER BY wo.source_observed_at DESC, wo.id DESC
+                ORDER BY wo.fetched_at DESC, wo.source_observed_at DESC, wo.id DESC
                 LIMIT :limit
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("lpNumber", lpNumber)
                 .addValue("deviceId", deviceId == null ? "" : deviceId.trim())
-                .addValue("limit", Math.max(1, Math.min(limit, 200)));
+                .addValue("limit", Math.max(1, Math.min(limit, 200)))
+                .addValue("startAt", startAt)
+                .addValue("endAt", endAt);
         return namedJdbcTemplate.query(sql, params, this::mapView);
     }
 

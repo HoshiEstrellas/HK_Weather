@@ -2,7 +2,7 @@
   <view class="header">
     <text class="eyebrow">HISTORY</text>
     <text class="title">历史获取数据</text>
-    <text class="subtitle">当前 10 分钟区间之前获取到的天气记录</text>
+    <text class="subtitle">当前 10 分钟区间之前 1 小时内获取到的天气记录</text>
   </view>
 
   <view class="search">
@@ -40,7 +40,7 @@
       </view>
     </view>
     <view class="empty" wx:if="{{history.length == 0 && !error}}">
-      暂无历史获取记录。
+      暂无前一小时历史获取记录。
     </view>
   </view>
 </view>

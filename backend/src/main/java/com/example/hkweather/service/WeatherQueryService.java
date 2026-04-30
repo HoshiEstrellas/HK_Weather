@@ -65,7 +65,8 @@ public class WeatherQueryService {
     }
 
     public List<WeatherObservationView> globalHistory(String keyword, int limit) {
-        return observationRepository.findGlobalHistory(keyword, limit, currentIntervalWindow().startAt());
+        TimeWindow historyWindow = previousHourHistoryWindow();
+        return observationRepository.findGlobalHistory(keyword, limit, historyWindow.startAt(), historyWindow.endAt());
     }
 
     public List<LamppostDto> lampposts() {
@@ -77,7 +78,8 @@ public class WeatherQueryService {
     }
 
     public List<WeatherObservationView> history(String lpNumber, String deviceId, int limit) {
-        return observationRepository.findHistory(lpNumber, deviceId, limit);
+        TimeWindow historyWindow = previousHourHistoryWindow();
+        return observationRepository.findHistory(lpNumber, deviceId, limit, historyWindow.startAt(), historyWindow.endAt());
     }
 
     private BigDecimal toBigDecimal(Object value) {
@@ -122,6 +124,11 @@ public class WeatherQueryService {
         int flooredMinute = (now.getMinute() / intervalMinutes) * intervalMinutes;
         LocalDateTime startAt = now.withMinute(flooredMinute).withSecond(0).withNano(0);
         return new TimeWindow(startAt, startAt.plusMinutes(intervalMinutes));
+    }
+
+    private TimeWindow previousHourHistoryWindow() {
+        LocalDateTime endAt = currentIntervalWindow().startAt();
+        return new TimeWindow(endAt.minusHours(1), endAt);
     }
 
     private TemperatureExtremes dailyAverageTemperatureExtremes() {

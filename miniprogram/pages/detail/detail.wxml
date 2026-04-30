@@ -33,7 +33,7 @@
       </view>
     </view>
 
-    <view class="section-title">历史观测</view>
+    <view class="section-title">前一小时历史观测</view>
     <view class="history">
       <view class="history-row" wx:for="{{history}}" wx:key="id">
         <view class="history-main">
@@ -47,7 +47,7 @@
         </view>
       </view>
       <view class="empty" wx:if="{{history.length == 0}}">
-        这个灯柱暂时没有历史记录。
+        这个灯柱前一小时暂时没有历史记录。
       </view>
     </view>
   </block>
