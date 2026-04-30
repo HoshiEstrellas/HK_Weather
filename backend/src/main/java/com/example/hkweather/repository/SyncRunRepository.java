@@ -5,10 +5,10 @@ import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -29,14 +29,13 @@ public class SyncRunRepository {
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(
                     "INSERT INTO sync_runs (status, message) VALUES (?, ?)",
-                    Statement.RETURN_GENERATED_KEYS
+                    new String[]{"id"}
             );
             ps.setString(1, "RUNNING");
             ps.setString(2, "Sync started");
             return ps;
         }, keyHolder);
-        Number key = keyHolder.getKey();
-        return key == null ? 0L : key.longValue();
+        return generatedId(keyHolder);
     }
 
     public void finish(
@@ -124,6 +123,20 @@ public class SyncRunRepository {
             return null;
         }
         return message.length() > 1000 ? message.substring(0, 1000) : message;
+    }
+
+    private long generatedId(KeyHolder keyHolder) {
+        List<Map<String, Object>> keyList = keyHolder.getKeyList();
+        if (keyList.isEmpty()) {
+            return 0L;
+        }
+
+        Map<String, Object> keys = keyList.get(0);
+        Object id = keys.getOrDefault("id", keys.get("ID"));
+        if (id instanceof Number number) {
+            return number.longValue();
+        }
+        throw new IllegalStateException("Generated sync run id was not returned");
     }
 
     private LocalDateTime toLocalDateTime(Timestamp timestamp) {
